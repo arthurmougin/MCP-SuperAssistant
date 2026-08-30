@@ -24,6 +24,7 @@ import {
   initialize as initializeRenderer,
   startDirectMonitoring,
   stopDirectMonitoring,
+  stopFunctionResultMonitoring,
   processFunctionCalls as renderFunctionCalls,
   checkForUnprocessedFunctionCalls,
   configureFunctionCallRenderer,
@@ -289,6 +290,7 @@ function collectDemographicData(): { [key: string]: any } {
 
 // Track renderer initialization across delayed, fallback, and retry paths.
 let rendererInitialized = false;
+let rendererDisabledByInvalidContext = false;
 let rendererInitializationScheduled = false;
 
 type IdleCapableWindow = Window & {
@@ -300,12 +302,13 @@ type IdleCapableWindow = Window & {
 // React hydration mismatches (notably recoverable error #418). Wait until window load, then
 // yield once more before touching existing conversation DOM.
 const scheduleRendererAfterHydration = (): void => {
-  if (rendererInitialized || rendererInitializationScheduled) return;
+  if (rendererDisabledByInvalidContext || rendererInitialized || rendererInitializationScheduled) return;
 
   rendererInitializationScheduled = true;
 
   const initializeWhenSettled = () => {
     const run = () => {
+      if (rendererDisabledByInvalidContext) return;
       rendererInitializationScheduled = false;
       if (!rendererInitialized) {
         initRendererWithRetry();
@@ -391,6 +394,20 @@ scheduleRendererAfterHydration();
   }
 })();
 
+// A content script survives an extension reload inside an already-open tab, but its chrome.runtime
+// context becomes permanently invalid. Stop all DOM observers and prevent queued hydration/retry
+// callbacks from reviving this stale renderer; a page reload will inject the fresh extension context.
+eventBus.on('context:bridge-invalidated', ({ error }) => {
+  if (rendererDisabledByInvalidContext) return;
+
+  rendererDisabledByInvalidContext = true;
+  rendererInitialized = false;
+  rendererInitializationScheduled = false;
+  stopDirectMonitoring();
+  stopFunctionResultMonitoring();
+  logger.warn(`Stopping renderer because extension context was invalidated: ${error}`);
+});
+
 // Listen for connection status changes via the global event bus
 eventBus.on('connection:status-changed', ({ status }: { status: ConnectionStatus }) => {
   const isConnected = status === 'connected';
@@ -413,7 +430,7 @@ eventBus.on('connection:status-changed', ({ status }: { status: ConnectionStatus
 
 // More robust initialization with retries if immediate initialization failed
 const initRendererWithRetry = (retries = 3, delay = 300) => {
-  if (rendererInitialized) return; // Don't try again if already initialized
+  if (rendererDisabledByInvalidContext || rendererInitialized) return; // Never revive a stale extension context.
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     try {

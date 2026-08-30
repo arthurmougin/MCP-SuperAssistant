@@ -401,18 +401,6 @@ class McpClient {
       // Update tool execution with success
       useToolStore.getState().completeToolExecution(executionId, result, 'success');
 
-      // Emit event for tracking
-      eventBus.emit('tool:execution-completed', {
-        execution: {
-          id: executionId,
-          toolName,
-          parameters: args,
-          result,
-          timestamp: Date.now(),
-          status: 'success' as const
-        }
-      });
-
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -420,13 +408,6 @@ class McpClient {
 
       // Update tool execution with error
       useToolStore.getState().completeToolExecution(executionId, null, 'error', errorMessage);
-
-      // Emit error event
-      eventBus.emit('tool:execution-failed', {
-        toolName,
-        error: errorMessage,
-        callId: executionId
-      });
 
       // Check if this is a connection-related error
       if (this.isConnectionError(errorMessage)) {

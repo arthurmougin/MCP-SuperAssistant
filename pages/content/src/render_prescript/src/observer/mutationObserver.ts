@@ -161,17 +161,31 @@ export const checkForUnprocessedFunctionCalls = (): number => {
     return elements;
   };
 
-  // Process each target element
+  // Process each target element. Completed blocks are normally skipped, but re-enter the
+  // renderer when host DOM churn removed controls that should still be present.
   const elements = getTargetElements();
   for (const element of elements) {
-    if (!processedElements.has(element) && !element.closest('.function-block')) {
-      const blockId =
-        element.getAttribute('data-block-id') || `block-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    if (element.closest('.function-block')) continue;
 
+    const blockId =
+      element.getAttribute('data-block-id') || `block-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const renderedBlock = element.getAttribute('data-block-id')
+      ? document.querySelector<HTMLDivElement>(`.function-block[data-block-id="${blockId}"]`)
+      : null;
+    const historyWasPresent = renderedBlock?.getAttribute('data-function-history') === 'present';
+    const completedControlsMissing =
+      !!renderedBlock?.classList.contains('function-complete') &&
+      (!renderedBlock.querySelector('.execute-button') ||
+        !renderedBlock.querySelector('.raw-toggle') ||
+        (historyWasPresent && !renderedBlock.querySelector('.function-history-panel')));
+
+    if (!processedElements.has(element) || completedControlsMissing) {
       const result = renderFunctionCall(element as HTMLPreElement, { current: false });
       if (result) {
         processedCount++;
-        monitorNode(element, blockId);
+        if (!streamingObservers.has(blockId)) {
+          monitorNode(element, blockId);
+        }
       }
     }
   }

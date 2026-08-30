@@ -581,10 +581,7 @@ export const smoothlyUpdateBlockContent = (
  * @param rawContent Raw XML content containing the function call
  */
 export const addExecuteButton = (blockDiv: HTMLDivElement, rawContent: string): void => {
-  // Check for existing execute button to avoid duplicates
-  if (blockDiv.querySelector('.execute-button')) {
-    return;
-  }
+  const existingExecuteButton = blockDiv.querySelector('.execute-button');
 
   // Detect format and extract function name and parameters
   const isJSON = rawContent.includes('"type"') && rawContent.includes('function_call');
@@ -646,6 +643,13 @@ export const addExecuteButton = (blockDiv: HTMLDivElement, rawContent: string): 
 
   // Generate content signature for this function call
   const contentSignature = generateContentSignature(functionName, parameters);
+
+  // Even when Run survived a host rerender, the history panel may have been removed.
+  // Re-check history before returning so completed blocks are self-healing.
+  if (existingExecuteButton) {
+    checkAndDisplayFunctionHistory(blockDiv, functionName, callId, contentSignature);
+    return;
+  }
 
   // Use DocumentFragment for efficient DOM construction
   const fragment = document.createDocumentFragment();

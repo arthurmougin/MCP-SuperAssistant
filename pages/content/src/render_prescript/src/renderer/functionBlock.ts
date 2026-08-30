@@ -1220,10 +1220,20 @@ export const renderFunctionCall = (block: HTMLPreElement, isProcessingRef: { cur
     return false;
   }
 
-  const existingFunctionBlock = document.querySelector(`.function-block[data-block-id="${blockId}"]`);
+  const existingFunctionBlock = document.querySelector<HTMLDivElement>(`.function-block[data-block-id="${blockId}"]`);
   if (existingFunctionBlock && existingFunctionBlock.classList.contains('function-complete')) {
-    if (CONFIG.debug) logger.debug(`Skipping render for completed block ${blockId}`);
-    return false;
+    const historyWasPresent = existingFunctionBlock.getAttribute('data-function-history') === 'present';
+    const controlsIntact =
+      !!existingFunctionBlock.querySelector('.execute-button') &&
+      !!existingFunctionBlock.querySelector('.raw-toggle') &&
+      (!historyWasPresent || !!existingFunctionBlock.querySelector('.function-history-panel'));
+
+    if (controlsIntact) {
+      if (CONFIG.debug) logger.debug(`Skipping intact completed block ${blockId}`);
+      return false;
+    }
+
+    if (CONFIG.debug) logger.debug(`Repairing missing controls for completed block ${blockId}`);
   }
 
   const preExistingIncompleteBlocks = (window as any).preExistingIncompleteBlocks || new Set<string>();

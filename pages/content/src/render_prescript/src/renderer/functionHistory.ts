@@ -222,6 +222,18 @@ export const checkAndDisplayFunctionHistory = (
   callId: string,
   contentSignature: string,
 ): void => {
+  const historyHost = blockDiv.classList.contains('function-buttons')
+    ? (blockDiv.closest('.function-block') as HTMLDivElement | null) || blockDiv
+    : blockDiv;
+
+  // Track whether this completed call has history so host DOM churn can restore it.
+  historyHost.setAttribute('data-function-history', 'none');
+
+  if (historyHost.querySelector('.function-history-panel')) {
+    historyHost.setAttribute('data-function-history', 'present');
+    return;
+  }
+
   // Get executed functions for the current URL
   const executedFunctions = getExecutedFunctionsForCurrentUrl();
 
@@ -238,6 +250,7 @@ export const checkAndDisplayFunctionHistory = (
   }
 
   if (matchingExecutions.length > 0) {
+    historyHost.setAttribute('data-function-history', 'present');
     // Sort by execution time (newest first) and take only the latest
     const latestExecution = matchingExecutions.sort((a, b) => b.executedAt - a.executedAt)[0];
 

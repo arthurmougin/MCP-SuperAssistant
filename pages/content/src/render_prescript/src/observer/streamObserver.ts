@@ -737,6 +737,14 @@ const performSeamlessCompletion = (blockId: string, finalContent: string): void 
 
       // Mark as completed
       completedStreams.set(blockId, true);
+
+
+      // Run one final control repair pass after the block becomes stable.
+      // This guarantees Run/history even when stream completion won the race.
+      const originalPre = document.querySelector<HTMLPreElement>(`pre[data-block-id="${blockId}"]`);
+      if (originalPre) {
+        requestAnimationFrame(() => renderFunctionCall(originalPre, { current: false }));
+      }
     });
   });
 };

@@ -55,6 +55,12 @@ export const createHistoryPanel = (
   historyPanel.className = 'function-history-panel';
   historyPanel.style.display = 'none';
 
+  // createHistoryPanel host marker: remember that this block owns execution history.
+  const historyHost = blockDiv.classList.contains('function-buttons')
+    ? (blockDiv.closest('.function-block') as HTMLDivElement | null) || blockDiv
+    : blockDiv;
+  historyHost.setAttribute('data-function-history', 'present');
+
   // Add to block div
   if (blockDiv.classList.contains('function-buttons')) {
     // If we're in a button container, add historyPanel to the parent

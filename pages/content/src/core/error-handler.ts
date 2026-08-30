@@ -65,6 +65,14 @@ class GlobalErrorHandler {
   private setupGlobalHandlers(): void {
     // Handle uncaught exceptions
     window.addEventListener('error', (event) => {
+      const message = event.message || event.error?.message || '';
+      if (
+        message.includes('ResizeObserver loop completed with undelivered notifications') ||
+        message.includes('ResizeObserver loop limit exceeded')
+      ) {
+        return;
+      }
+
       this.handleError(event.error || new Error(event.message), {
         component: 'window',
         operation: 'global-error',

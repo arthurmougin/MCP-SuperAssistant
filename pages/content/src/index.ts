@@ -287,23 +287,48 @@ function collectDemographicData(): { [key: string]: any } {
   }
 }
 
-// Track renderer initialization across immediate, fallback, and retry paths.
+// Track renderer initialization across delayed, fallback, and retry paths.
 let rendererInitialized = false;
+let rendererInitializationScheduled = false;
 
-// Initialize the renderer at the earliest possible moment (styles are injected automatically)
-// This ensures function call blocks are hidden before they can be seen by the user
-(function instantInitialize() {
-  try {
-    // This will set up early observers to hide function blocks before they render
-    initializeRenderer();
-    rendererInitialized = true;
-    logMessage('Function call renderer initialized immediately at script load');
-  } catch (error) {
-    logger.error('Error in immediate renderer initialization:', error);
-    // If this fails, we'll try again with the standard approach
+type IdleCapableWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+};
+
+// ChatGPT hydrates server-rendered conversation markup after the content script is loaded.
+// Rendering a sibling and hiding a React-owned <pre> before hydration completes can cause
+// React hydration mismatches (notably recoverable error #418). Wait until window load, then
+// yield once more before touching existing conversation DOM.
+const scheduleRendererAfterHydration = (): void => {
+  if (rendererInitialized || rendererInitializationScheduled) return;
+
+  rendererInitializationScheduled = true;
+
+  const initializeWhenSettled = () => {
+    const run = () => {
+      rendererInitializationScheduled = false;
+      if (!rendererInitialized) {
+        initRendererWithRetry();
+      }
+    };
+
+    const idleWindow = window as IdleCapableWindow;
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(run, { timeout: 750 });
+    } else {
+      window.setTimeout(run, 250);
+    }
+  };
+
+  if (document.readyState === 'complete') {
+    initializeWhenSettled();
+  } else {
+    window.addEventListener('load', initializeWhenSettled, { once: true });
   }
-})();
+};
 
+// Schedule once. Fallback/startup paths below use the same guarded scheduler.
+scheduleRendererAfterHydration();
 // Legacy adapter initialization has been moved to the new plugin system in Session 10
 // Adapter initialization is now handled automatically by the plugin registry during applicationInit()
 
@@ -358,11 +383,8 @@ let rendererInitialized = false;
     logMessage('Attempting fallback initialization...');
     try {
       // Basic renderer initialization as fallback
-      if (!rendererInitialized) {
-        initializeRenderer();
-        rendererInitialized = true;
-      }
-      logMessage('Fallback renderer initialization completed');
+      scheduleRendererAfterHydration();
+      logMessage('Fallback renderer initialization scheduled after host hydration');
     } catch (fallbackError) {
       logger.error('Fallback initialization also failed:', fallbackError);
     }
@@ -422,19 +444,8 @@ const initRendererWithRetry = (retries = 3, delay = 300) => {
   }
 };
 
-// Also set up the standard initialization path as a fallback
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    if (!rendererInitialized) {
-      initRendererWithRetry();
-    }
-  });
-} else {
-  // If DOMContentLoaded already fired but initialization failed earlier
-  if (!rendererInitialized) {
-    initRendererWithRetry();
-  }
-}
+// The renderer is scheduled after host hydration above; keep this call idempotent.
+scheduleRendererAfterHydration();
 
 // Remote Config message handler
 function handleRemoteConfigMessage(message: any, sendResponse: (response: any) => void): void {

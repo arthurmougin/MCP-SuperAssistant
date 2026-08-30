@@ -237,9 +237,7 @@ const initializeRenderer = () => {
   if (CONFIG.useCodeMirrorExtraction) {
     injectCodeMirrorAccessor();
   }
-
-  processFunctionCalls(); // Initial processing of existing blocks
-
+  // The initial scan is performed by startDirectMonitoring() through initializeObserver().
   // Process function results if selectors are configured
   if (CONFIG.function_result_selector && CONFIG.function_result_selector.length > 0) {
     processFunctionResults(); // Initial processing of existing function results
@@ -259,9 +257,7 @@ const initializeRenderer = () => {
   // });
 
   // Initialize the mutation observer
-  initializeObserver(); // Start the main MutationObserver
-  startDirectMonitoring(); // Start direct monitoring if enabled
-
+  initializeObserver(); // Starts direct monitoring and performs the initial scan once
   // Initialize the function result observer if selectors are configured
   if (CONFIG.function_result_selector && CONFIG.function_result_selector.length > 0) {
     initializeFunctionResultObserver(); // Start the function result observer

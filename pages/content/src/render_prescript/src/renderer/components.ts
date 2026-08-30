@@ -2,6 +2,7 @@ import type { ParamValueElement } from '../core/types';
 import { StabilizedBlock } from '../core/types';
 import { CONFIG } from '../core/config';
 import { safelySetContent } from '../utils/index';
+import { TOOL_EXECUTION_COMPLETE_EVENT } from '../../../utils/extension-events';
 import { storeExecutedFunction, generateContentSignature } from '../mcpexecute/storage';
 import { checkAndDisplayFunctionHistory, createHistoryPanel, updateHistoryPanel } from './functionHistory';
 import { extractJSONParameters, stripLanguageTags, extractCleanContent } from '../parser/jsonFunctionParser';
@@ -1047,7 +1048,7 @@ const attachResultAsFile = async (
                   // Dispatch event for legacy insertion
                   requestAnimationFrame(() => {
                     document.dispatchEvent(
-                      new CustomEvent('mcp:tool-execution-complete', {
+                      new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                         detail: {
                           result: confirmationText,
                           isFileAttachment: false,
@@ -1067,7 +1068,7 @@ const attachResultAsFile = async (
             try {
               requestAnimationFrame(() => {
                 document.dispatchEvent(
-                  new CustomEvent('mcp:tool-execution-complete', {
+                  new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                     detail: {
                       result: confirmationText,
                       isFileAttachment: false,
@@ -1094,7 +1095,7 @@ const attachResultAsFile = async (
 
           // Use requestAnimationFrame for better performance
           requestAnimationFrame(() => {
-            document.dispatchEvent(new CustomEvent('mcp:tool-execution-complete', { detail: eventDetail }));
+            document.dispatchEvent(new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, { detail: eventDetail }));
           });
 
           resetButtonState();
@@ -1123,7 +1124,7 @@ const attachResultAsFile = async (
                 // Dispatch event for legacy insertion
                 requestAnimationFrame(() => {
                   document.dispatchEvent(
-                    new CustomEvent('mcp:tool-execution-complete', {
+                    new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                       detail: {
                         result: confirmationText,
                         isFileAttachment: false,
@@ -1143,7 +1144,7 @@ const attachResultAsFile = async (
           try {
             requestAnimationFrame(() => {
               document.dispatchEvent(
-                new CustomEvent('mcp:tool-execution-complete', {
+                new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                   detail: {
                     result: confirmationText,
                     isFileAttachment: false,
@@ -1168,7 +1169,7 @@ const attachResultAsFile = async (
         };
 
         requestAnimationFrame(() => {
-          document.dispatchEvent(new CustomEvent('mcp:tool-execution-complete', { detail: eventDetail }));
+          document.dispatchEvent(new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, { detail: eventDetail }));
         });
 
         resetButtonState();
@@ -1195,7 +1196,7 @@ const attachResultAsFile = async (
               // Dispatch event for legacy insertion
               requestAnimationFrame(() => {
                 document.dispatchEvent(
-                  new CustomEvent('mcp:tool-execution-complete', {
+                  new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                     detail: {
                       result: confirmationText,
                       isFileAttachment: false,
@@ -1215,7 +1216,7 @@ const attachResultAsFile = async (
         try {
           requestAnimationFrame(() => {
             document.dispatchEvent(
-              new CustomEvent('mcp:tool-execution-complete', {
+              new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                 detail: {
                   result: confirmationText,
                   isFileAttachment: false,
@@ -1240,7 +1241,7 @@ const attachResultAsFile = async (
       };
 
       requestAnimationFrame(() => {
-        document.dispatchEvent(new CustomEvent('mcp:tool-execution-complete', { detail: eventDetail }));
+        document.dispatchEvent(new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, { detail: eventDetail }));
       });
 
       resetButtonState();
@@ -1491,7 +1492,7 @@ export const displayResult = (
               // Efficient event dispatch with requestAnimationFrame
               requestAnimationFrame(() => {
                 document.dispatchEvent(
-                  new CustomEvent('mcp:tool-execution-complete', {
+                  new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                     detail: {
                       result: wrapperText,
                       isFileAttachment: false,
@@ -1514,7 +1515,7 @@ export const displayResult = (
               // Efficient event dispatch with requestAnimationFrame
               requestAnimationFrame(() => {
                 document.dispatchEvent(
-                  new CustomEvent('mcp:tool-execution-complete', {
+                  new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                     detail: {
                       result: wrapperText,
                       isFileAttachment: false,
@@ -1554,7 +1555,7 @@ export const displayResult = (
           // Efficient event dispatch with requestAnimationFrame
           requestAnimationFrame(() => {
             document.dispatchEvent(
-              new CustomEvent('mcp:tool-execution-complete', {
+              new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                 detail: {
                   result: wrapperText,
                   isFileAttachment: false,
@@ -1665,7 +1666,7 @@ export const displayResult = (
                     // Dispatch event for legacy insertion
                     requestAnimationFrame(() => {
                       document.dispatchEvent(
-                        new CustomEvent('mcp:tool-execution-complete', {
+                        new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                           detail: {
                             result: message,
                             isFileAttachment: false,
@@ -1685,7 +1686,7 @@ export const displayResult = (
               try {
                 requestAnimationFrame(() => {
                   document.dispatchEvent(
-                    new CustomEvent('mcp:tool-execution-complete', {
+                    new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
                       detail: {
                         result: message,
                         isFileAttachment: false,
@@ -1719,7 +1720,7 @@ export const displayResult = (
       // Dispatch event - delays are handled by automation service
       requestAnimationFrame(() => {
         document.dispatchEvent(
-          new CustomEvent('mcp:tool-execution-complete', {
+          new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, {
             detail: {
               result: wrappedResult,
               skipAutoInsertCheck: false

@@ -18,6 +18,7 @@ import { useUserPreferences } from '../hooks/useStores';
 import { useCurrentAdapter } from '../hooks/useAdapter';
 import { eventBus } from '../events/event-bus';
 import { createLogger } from '@extension/shared/lib/logger';
+import { TOOL_EXECUTION_COMPLETE_EVENT } from '../utils/extension-events';
 
 // Store references for accessing state outside React components
 
@@ -95,6 +96,8 @@ export interface AutomationState {
 export class AutomationService {
   private static instance: AutomationService | null = null;
   private isInitialized = false;
+  private initializationPromise: Promise<void> | null = null;
+  private mcpStateUnsubscribe: (() => void) | null = null;
   private eventListener: ((event: Event) => void) | null = null;
 
   // Private constructor for singleton pattern
@@ -120,22 +123,29 @@ export class AutomationService {
       return;
     }
 
-    logger.debug('[AutomationService] Initializing automation service');
+    if (this.initializationPromise) {
+      logger.debug('[AutomationService] Initialization already in progress, awaiting it');
+      await this.initializationPromise;
+      return;
+    }
 
-    // Initialize store access functions
-    await initializeStoreAccess();
+    this.initializationPromise = (async () => {
+      logger.debug('[AutomationService] Initializing automation service');
 
-    // Set up event listener for tool execution completion
-    this.setupToolExecutionListener();
+      await initializeStoreAccess();
+      this.setupToolExecutionListener();
+      this.setupMCPStateListener();
+      await this.exposeAutomationStateToWindow();
 
-    // Listen for MCP state changes to update automation availability
-    this.setupMCPStateListener();
+      this.isInitialized = true;
+      logger.debug('[AutomationService] Automation service initialized successfully');
+    })();
 
-    // Expose initial automation state to window for render_prescript access
-    await this.exposeAutomationStateToWindow();
-
-    this.isInitialized = true;
-    logger.debug('[AutomationService] Automation service initialized successfully');
+    try {
+      await this.initializationPromise;
+    } finally {
+      this.initializationPromise = null;
+    }
   }
 
   /**
@@ -151,8 +161,13 @@ export class AutomationService {
 
     // Remove DOM event listener
     if (this.eventListener) {
-      document.removeEventListener('mcp:tool-execution-complete', this.eventListener);
+      document.removeEventListener(TOOL_EXECUTION_COMPLETE_EVENT, this.eventListener);
       this.eventListener = null;
+    }
+
+    if (this.mcpStateUnsubscribe) {
+      this.mcpStateUnsubscribe();
+      this.mcpStateUnsubscribe = null;
     }
 
     this.isInitialized = false;
@@ -165,7 +180,7 @@ export class AutomationService {
   private setupToolExecutionListener(): void {
     // Remove existing listener if any
     if (this.eventListener) {
-      document.removeEventListener('mcp:tool-execution-complete', this.eventListener);
+      document.removeEventListener(TOOL_EXECUTION_COMPLETE_EVENT, this.eventListener);
     }
 
     // Create new event listener
@@ -174,7 +189,7 @@ export class AutomationService {
     };
 
     // Add event listener to document
-    document.addEventListener('mcp:tool-execution-complete', this.eventListener);
+    document.addEventListener(TOOL_EXECUTION_COMPLETE_EVENT, this.eventListener);
     logger.debug('[AutomationService] Tool execution event listener registered');
   }
 
@@ -182,10 +197,12 @@ export class AutomationService {
    * Set up listener for MCP state changes
    */
   private setupMCPStateListener(): void {
-    // Listen for MCP connection state changes via the event bus
-    eventBus.on('connection:status-changed', ({ status }) => {
+    if (this.mcpStateUnsubscribe) {
+      this.mcpStateUnsubscribe();
+    }
+
+    this.mcpStateUnsubscribe = eventBus.on('connection:status-changed', ({ status }) => {
       logger.debug('[AutomationService] MCP connection status changed:', status);
-      // Could add logic here to disable automation when MCP is disconnected
     });
   }
 
@@ -497,7 +514,7 @@ export class AutomationService {
    */
   public async triggerTestAutomation(detail: ToolExecutionCompleteDetail): Promise<void> {
     logger.debug('[AutomationService] Triggering test automation');
-    await this.handleToolExecutionComplete(new CustomEvent('mcp:tool-execution-complete', { detail }));
+    await this.handleToolExecutionComplete(new CustomEvent(TOOL_EXECUTION_COMPLETE_EVENT, { detail }));
   }
 
   /**

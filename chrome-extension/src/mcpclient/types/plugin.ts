@@ -3,6 +3,13 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 export type TransportType = 'sse' | 'websocket' | 'streamable-http';
 
+export interface ToolCallRequestOptions {
+  timeout?: number;
+  resetTimeoutOnProgress?: boolean;
+  maxTotalTimeout?: number;
+  onprogress?: (progress: any) => void;
+}
+
 export interface PluginConfig {
   [key: string]: any;
 }
@@ -29,7 +36,7 @@ export interface ITransportPlugin {
   isHealthy(): Promise<boolean>;
   
   // Tool operations
-  callTool(client: Client, toolName: string, args: any): Promise<any>;
+  callTool(client: Client, toolName: string, args: any, options?: ToolCallRequestOptions): Promise<any>;
   getPrimitives(client: Client): Promise<any[]>;
 }
 

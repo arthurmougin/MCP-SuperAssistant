@@ -28,7 +28,7 @@ export const CONNECTION_DEFAULTS = {
 };
 
 export const GLOBAL_DEFAULTS = {
-  timeout: 30000,
+  timeout: 30 * 60 * 1000, // 30 minutes for long-running MCP tools
   maxRetries: 3,
   healthCheckInterval: 60000,
   reconnectDelay: 2000,

@@ -9,7 +9,7 @@ import { WebSocketPlugin } from '../plugins/websocket/WebSocketPlugin.js';
 import { StreamableHttpPlugin } from '../plugins/streamable-http/StreamableHttpPlugin.js';
 import type { ClientConfig, ConnectionRequest } from '../types/config.js';
 import { DEFAULT_CLIENT_CONFIG } from '../types/config.js';
-import type { TransportType, ITransportPlugin, PluginConfig } from '../types/plugin.js';
+import type { TransportType, ITransportPlugin, PluginConfig, ToolCallRequestOptions } from '../types/plugin.js';
 import type { Primitive, NormalizedTool, PrimitivesResponse } from '../types/primitives.js';
 import type { AllEvents } from '../types/events.js';
 import { createLogger } from '@extension/shared/lib/logger';
@@ -338,7 +338,14 @@ export class McpClient extends EventEmitter<AllEvents> {
 
     try {
       logger.debug(`Calling tool: ${toolName}`);
-      const result = await this.activePlugin.callTool(this.client, toolName, args);
+      const requestOptions: ToolCallRequestOptions = {
+        timeout: this.config.global.timeout,
+        resetTimeoutOnProgress: true,
+        // Supplying onprogress asks the MCP peer for progress notifications when supported.
+        // Each notification resets the inactivity timeout; there is intentionally no maxTotalTimeout.
+        onprogress: progress => logger.debug(`Tool progress: `, progress),
+      };
+      const result = await this.activePlugin.callTool(this.client, toolName, args, requestOptions);
 
       const duration = Date.now() - startTime;
       this.emit('tool:call-completed', { toolName, result, duration });

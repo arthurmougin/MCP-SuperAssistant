@@ -1,7 +1,7 @@
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { ITransportPlugin, PluginMetadata, PluginConfig } from '../../types/plugin.js';
+import type { ITransportPlugin, PluginMetadata, PluginConfig, ToolCallRequestOptions } from '../../types/plugin.js';
 import { createLogger } from '@extension/shared/lib/logger';
 
 
@@ -125,7 +125,7 @@ export class StreamableHttpPlugin implements ITransportPlugin {
     }
   }
 
-  async callTool(client: Client, toolName: string, args: any): Promise<any> {
+  async callTool(client: Client, toolName: string, args: any, options?: ToolCallRequestOptions): Promise<any> {
     if (!this.isConnected()) {
       throw new Error('StreamableHttpPlugin: Not connected');
     }
@@ -133,7 +133,7 @@ export class StreamableHttpPlugin implements ITransportPlugin {
     logger.debug(`Calling tool: ${toolName}`);
 
     try {
-      const result = await client.callTool({ name: toolName, arguments: args });
+      const result = await client.callTool({ name: toolName, arguments: args }, undefined, options);
       logger.debug(`Tool call completed: ${toolName}`);
       return result;
     } catch (error) {

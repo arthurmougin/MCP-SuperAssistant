@@ -31,7 +31,7 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
     // Primary chat input selector (ProseMirror contenteditable)
     CHAT_INPUT: '#prompt-textarea, .ProseMirror[contenteditable="true"], div[contenteditable="true"][data-id*="prompt"]',
     // Submit button selectors (multiple fallbacks)
-    SUBMIT_BUTTON: 'button[data-testid="send-button"], button[aria-label*="Send"], button[data-testid="fruitjuice-send-button"], button:has(svg) + button:has(svg[viewBox="0 0 20 20"])',
+    SUBMIT_BUTTON: 'button[data-testid="send-button"], button[data-testid="fruitjuice-send-button"], button[aria-label="Send message"], button[aria-label="Send prompt"]',
     // File upload related selectors
     FILE_UPLOAD_BUTTON: '#upload-file-btn, button[aria-label*="Add photos"], button[data-testid="composer-action-file-upload"] button',
     FILE_INPUT: 'input[type="file"][multiple]',
@@ -59,8 +59,10 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
   
   // Setup state tracking
   private storeEventListenersSetup: boolean = false;
+  private storeEventUnsubscribers: Array<() => void> = [];
   private domObserversSetup: boolean = false;
   private uiIntegrationSetup: boolean = false;
+  private uiReinjectionPending: boolean = false;
   
   // Instance tracking for debugging
   private static instanceCount = 0;
@@ -107,15 +109,13 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
     // Inject ChatGPT-specific button styles
     this.injectChatGPTButtonStyles();
 
-    // Set up DOM observers and UI integration
+    // Reinstall store listeners if this adapter was previously deactivated.
+    this.setupStoreEventListeners();
+
+    // Set up DOM observers and UI integration. PluginRegistry is the authoritative
+    // lifecycle/event owner and emits adapter:activated after this method succeeds.
     this.setupDOMObservers();
     this.setupUIIntegration();
-
-    // Emit activation event for store synchronization
-    this.context.eventBus.emit('adapter:activated', {
-      pluginName: this.name,
-      timestamp: Date.now()
-    });
   }
 
   async deactivate(): Promise<void> {
@@ -133,15 +133,12 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
     this.cleanupDOMObservers();
 
     // Reset setup flags
+    this.storeEventUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe());
     this.storeEventListenersSetup = false;
     this.domObserversSetup = false;
     this.uiIntegrationSetup = false;
 
-    // Emit deactivation event
-    this.context.eventBus.emit('adapter:deactivated', {
-      pluginName: this.name,
-      timestamp: Date.now()
-    });
+    // PluginRegistry emits adapter:deactivated after this method succeeds.
   }
 
   async cleanup(): Promise<void> {
@@ -172,6 +169,7 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
     }
     
     // Reset all setup flags
+    this.storeEventUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe());
     this.storeEventListenersSetup = false;
     this.domObserversSetup = false;
     this.uiIntegrationSetup = false;
@@ -271,33 +269,53 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
   async submitForm(options?: { formElement?: HTMLFormElement }): Promise<boolean> {
     this.context.logger.debug('Attempting to submit ChatGPT chat input');
 
-    let submitButton: HTMLButtonElement | null = null;
+    // Never search the whole page for a button. ChatGPT contains unrelated controls
+    // and popovers; keep automated clicks strictly scoped to the active composer.
+    const inputSelectors = this.selectors.CHAT_INPUT.split(', ');
+    let chatInput: HTMLElement | null = null;
+    for (const selector of inputSelectors) {
+      chatInput = document.querySelector(selector.trim()) as HTMLElement | null;
+      if (chatInput) break;
+    }
 
-    // Try multiple selectors for better compatibility
-    const selectors = this.selectors.SUBMIT_BUTTON.split(', ');
+    const composerRoot: ParentNode | null =
+      options?.formElement ||
+      chatInput?.closest('form') ||
+      chatInput?.closest('.composer-parent') ||
+      chatInput?.parentElement ||
+      null;
+
+    if (!composerRoot) {
+      this.context.logger.error('Could not find ChatGPT composer root');
+      this.emitExecutionFailed('submitForm', 'Chat composer not found');
+      return false;
+    }
+
+    let submitButton: HTMLButtonElement | null = null;
+    let matchedSelector: string | null = null;
+    const selectors = [...this.selectors.SUBMIT_BUTTON.split(', '), 'button[type="submit"]'];
     for (const selector of selectors) {
-      submitButton = document.querySelector(selector.trim()) as HTMLButtonElement;
-      if (submitButton) {
-        this.context.logger.debug(`Found submit button using selector: ${selector.trim()}`);
+      const candidate = composerRoot.querySelector(selector.trim()) as HTMLButtonElement | null;
+      if (candidate) {
+        submitButton = candidate;
+        matchedSelector = selector.trim();
         break;
       }
     }
 
     if (!submitButton) {
-      this.context.logger.error('Could not find ChatGPT submit button');
-      this.emitExecutionFailed('submitForm', 'Submit button not found');
+      this.context.logger.error('Could not find ChatGPT submit button inside composer');
+      this.emitExecutionFailed('submitForm', 'Submit button not found inside composer');
       return false;
     }
 
     try {
-      // Check if the button is disabled
       if (submitButton.disabled) {
         this.context.logger.warn('ChatGPT submit button is disabled');
         this.emitExecutionFailed('submitForm', 'Submit button is disabled');
         return false;
       }
 
-      // Check if the button is visible and clickable
       const rect = submitButton.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) {
         this.context.logger.warn('ChatGPT submit button is not visible');
@@ -305,18 +323,12 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
         return false;
       }
 
-      // Click the submit button to send the message
       submitButton.click();
-
-      // Emit success event to the new event system
-      this.emitExecutionCompleted('submitForm', {
-        formElement: options?.formElement?.tagName || 'unknown'
-      }, {
-        success: true,
-        method: 'submitButton.click',
-        buttonSelector: selectors.find(s => document.querySelector(s.trim()) === submitButton)
-      });
-
+      this.emitExecutionCompleted(
+        'submitForm',
+        { formElement: options?.formElement?.tagName || chatInput?.closest('form')?.tagName || 'composer' },
+        { success: true, method: 'submitButton.click', buttonSelector: matchedSelector },
+      );
       this.context.logger.debug('ChatGPT chat input submitted successfully');
       return true;
     } catch (error) {
@@ -753,17 +765,17 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
 
     this.context.logger.debug(`Setting up store event listeners for ChatGPT adapter instance #${this.instanceId}`);
 
-    // Listen for tool execution events from the store
-    this.context.eventBus.on('tool:execution-completed', (data) => {
-      this.context.logger.debug('Tool execution completed:', data);
-      // Handle auto-actions based on store state
-      this.handleToolExecutionCompleted(data);
-    });
-
-    // Listen for UI state changes
-    this.context.eventBus.on('ui:sidebar-toggle', (data) => {
-      this.context.logger.debug('Sidebar toggled:', data);
-    });
+    // Listen for store events and retain unsubscribe handles so deactivate/cleanup
+    // cannot accumulate duplicate callbacks across SPA lifecycle transitions.
+    this.storeEventUnsubscribers.push(
+      this.context.eventBus.on('tool:execution-completed', data => {
+        this.context.logger.debug('Tool execution completed:', data);
+        this.handleToolExecutionCompleted(data);
+      }),
+      this.context.eventBus.on('ui:sidebar-toggle', data => {
+        this.context.logger.debug('Sidebar toggled:', data);
+      }),
+    );
 
     this.storeEventListenersSetup = true;
   }
@@ -789,12 +801,18 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
         }
       });
 
-      if (shouldReinject) {
-        // Only attempt re-injection if we can find an insertion point
+      if (shouldReinject && !this.uiReinjectionPending) {
+        // Coalesce React mutation bursts into one reinjection attempt.
         const insertionPoint = this.findButtonInsertionPoint();
         if (insertionPoint) {
-          this.context.logger.debug('MCP popover removed, attempting to re-inject');
-          this.setupUIIntegration();
+          this.uiReinjectionPending = true;
+          queueMicrotask(() => {
+            this.uiReinjectionPending = false;
+            if (!document.getElementById('mcp-popover-container')) {
+              this.context.logger.debug('MCP popover removed, attempting to re-inject');
+              this.setupUIIntegration();
+            }
+          });
         }
       }
     });
@@ -1375,7 +1393,12 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
         return;
       }
 
-      // Sidebar manager exists, just ensure MCP popover connection is working
+      // If the sidebar was intended to be visible, show() also self-heals a
+      // detached shadow host before rendering again.
+      if (typeof activeSidebarManager.getIsVisible === 'function' && activeSidebarManager.getIsVisible()) {
+        void activeSidebarManager.show();
+      }
+
       this.ensureMCPPopoverConnection();
       
     } catch (error) {
@@ -1441,12 +1464,9 @@ export class ChatGPTAdapter extends BaseAdapterPlugin {
     // Re-check if the adapter is still supported
     const stillSupported = this.isSupported();
     if (!stillSupported) {
+      // PluginRegistry owns adapter lifecycle. A host/site change is already
+      // propagated through app:site-changed and must not synthesize lifecycle events here.
       this.context.logger.warn('ChatGPT adapter no longer supported on this host/page');
-      // Emit deactivation event using available event type
-      this.context.eventBus.emit('adapter:deactivated', {
-        pluginName: this.name,
-        timestamp: Date.now()
-      });
     } else {
       // Re-setup for new host
       this.setupUIIntegration();

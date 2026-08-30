@@ -1032,54 +1032,10 @@ export function startThemeMonitoring(): void {
     events: customThemeEvents,
   };
 
-  // Watch for CSS variable changes using ResizeObserver trick
-  if (window.ResizeObserver) {
-    const themeVariableWatcher = document.createElement('div');
-    themeVariableWatcher.style.cssText = `
-      position: absolute;
-      top: -9999px;
-      left: -9999px;
-      width: 1px;
-      height: 1px;
-      background: var(--background-color, var(--bg-color, var(--background, transparent)));
-      color: var(--text-color, var(--color, inherit));
-      pointer-events: none;
-    `;
-    document.body.appendChild(themeVariableWatcher);
-
-    const lastComputedStyle = window.getComputedStyle(themeVariableWatcher);
-    let lastBgColor = lastComputedStyle.backgroundColor;
-    let lastTextColor = lastComputedStyle.color;
-
-    const variableObserver = new ResizeObserver(() => {
-      const currentStyle = window.getComputedStyle(themeVariableWatcher);
-      const currentBgColor = currentStyle.backgroundColor;
-      const currentTextColor = currentStyle.color;
-
-      if (currentBgColor !== lastBgColor || currentTextColor !== lastTextColor) {
-        logThemeDetection('CSS variable change detected', {
-          bgColor: { old: lastBgColor, new: currentBgColor },
-          textColor: { old: lastTextColor, new: currentTextColor },
-        });
-        lastBgColor = currentBgColor;
-        lastTextColor = currentTextColor;
-        checkThemeChange();
-      }
-    });
-
-    // Trigger observation by changing a property
-    const triggerObservation = () => {
-      themeVariableWatcher.style.width = themeVariableWatcher.style.width === '1px' ? '2px' : '1px';
-    };
-
-    setInterval(triggerObservation, 1000); // Check every second
-    variableObserver.observe(themeVariableWatcher);
-
-    (window as any)._themeVariableWatcher = {
-      element: themeVariableWatcher,
-      observer: variableObserver,
-    };
-  }
+  // Theme changes are already covered by root/body attribute observers, media queries,
+  // storage events and custom theme events. Avoid a ResizeObserver that changes the
+  // observed element's own width every second; that pattern can generate browser-level
+  // ResizeObserver loop errors and keeps an interval alive after cleanup.
 
   // Initialize current state
   currentThemeState = getCurrentThemeState();

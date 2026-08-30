@@ -24,6 +24,37 @@ interface URLBasedFunctionHistory {
 
 // Storage key for the executed functions
 const STORAGE_KEY = 'mcp_url_based_function_history';
+/**
+ * Return a stable page key for execution history.
+ * Query strings and hashes are transient UI state on SPA chat sites and must not
+ * make an execution appear to disappear from the same conversation.
+ */
+const getCurrentHistoryKey = (): string => `${window.location.origin}${window.location.pathname}`;
+
+/**
+ * Read all buckets that belong to the current stable page key. This keeps
+ * backward compatibility with entries previously stored under the full href.
+ */
+const getCurrentHistoryBuckets = (storage: URLBasedFunctionHistory): Record<string, ExecutedFunction>[] => {
+  const stableKey = getCurrentHistoryKey();
+  const buckets: Record<string, ExecutedFunction>[] = [];
+
+  Object.entries(storage).forEach(([storedUrl, functions]) => {
+    try {
+      const parsed = new URL(storedUrl, window.location.origin);
+      const storedStableKey = `${parsed.origin}${parsed.pathname}`;
+      if (storedStableKey === stableKey) {
+        buckets.push(functions);
+      }
+    } catch {
+      if (storedUrl === stableKey || storedUrl === window.location.href) {
+        buckets.push(functions);
+      }
+    }
+  });
+
+  return buckets;
+};
 
 /**
  * Store information about an executed function with race condition prevention
@@ -40,8 +71,8 @@ export const storeExecutedFunction = (
   params: Record<string, any>,
   contentSignature: string,
 ): ExecutedFunction => {
-  // Get current URL
-  const url = window.location.href;
+  // Use a stable conversation/page key; ignore transient query/hash state.
+  const url = getCurrentHistoryKey();
 
   // Create the execution record
   const executionRecord: ExecutedFunction = {
@@ -150,15 +181,19 @@ export const getExecutedFunctions = (): (ExecutedFunction & { url: string })[] =
  * @returns Array of executed function records for the current URL
  */
 export const getExecutedFunctionsForCurrentUrl = (): ExecutedFunction[] => {
-  const currentUrl = window.location.href;
   const storage = getURLBasedStorage();
+  const merged = new Map<string, ExecutedFunction>();
 
-  // Direct access to current URL's functions
-  if (!storage[currentUrl]) {
-    return [];
-  }
+  getCurrentHistoryBuckets(storage).forEach(bucket => {
+    Object.entries(bucket).forEach(([key, execution]) => {
+      const existing = merged.get(key);
+      if (!existing || execution.executedAt > existing.executedAt) {
+        merged.set(key, execution);
+      }
+    });
+  });
 
-  return Object.values(storage[currentUrl]);
+  return Array.from(merged.values());
 };
 
 /**
@@ -191,19 +226,18 @@ export const getPreviousExecution = (
   callId: string,
   contentSignature: string,
 ): ExecutedFunction | null => {
-  const currentUrl = window.location.href;
   const storage = getURLBasedStorage();
-
-  // Check if URL exists in storage
-  if (!storage[currentUrl]) {
-    return null;
-  }
-
-  // Generate the execution key
   const executionKey = generateExecutionKey(functionName, callId, contentSignature);
+  let latest: ExecutedFunction | null = null;
 
-  // Direct lookup by key
-  return storage[currentUrl][executionKey] || null;
+  getCurrentHistoryBuckets(storage).forEach(bucket => {
+    const match = bucket[executionKey];
+    if (match && (!latest || match.executedAt > latest.executedAt)) {
+      latest = match;
+    }
+  });
+
+  return latest;
 };
 
 /**
@@ -214,20 +248,22 @@ export const getPreviousExecution = (
  * @returns The executed function record if found, null otherwise
  */
 export const getPreviousExecutionLegacy = (callId: string, contentSignature: string): ExecutedFunction | null => {
-  const currentUrl = window.location.href;
   const storage = getURLBasedStorage();
+  let latest: ExecutedFunction | null = null;
 
-  // Check if URL exists in storage
-  if (!storage[currentUrl]) {
-    return null;
-  }
+  getCurrentHistoryBuckets(storage).forEach(bucket => {
+    Object.values(bucket).forEach(func => {
+      if (
+        func.callId === callId &&
+        func.contentSignature === contentSignature &&
+        (!latest || func.executedAt > latest.executedAt)
+      ) {
+        latest = func;
+      }
+    });
+  });
 
-  // Find by callId and contentSignature
-  const functionEntry = Object.entries(storage[currentUrl]).find(
-    ([_, func]) => func.callId === callId && func.contentSignature === contentSignature,
-  );
-
-  return functionEntry ? functionEntry[1] : null;
+  return latest;
 };
 
 /**

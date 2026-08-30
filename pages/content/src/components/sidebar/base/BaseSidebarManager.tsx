@@ -338,10 +338,44 @@ export abstract class BaseSidebarManager {
    * Initialize the sidebar container and root within a Shadow DOM
    */
   public async initialize(): Promise<void> {
-    // If already successfully initialized, return resolved promise immediately
+    // Only trust the initialized flag while the sidebar DOM is still attached.
+    // SPA re-renders can remove extension-owned nodes without calling destroy().
     if (this._isInitialized) {
-      logMessage('Sidebar manager already initialized.');
-      return Promise.resolve();
+      const domIsIntact =
+        !!this.shadowHost?.isConnected &&
+        !!this.container?.isConnected &&
+        !!this.root &&
+        document.getElementById('mcp-sidebar-shadow-host') === this.shadowHost;
+
+      if (domIsIntact) {
+        logMessage('Sidebar manager already initialized.');
+        return Promise.resolve();
+      }
+
+      logMessage('[BaseSidebarManager] Initialized sidebar DOM was detached; rebuilding it.');
+
+      // Reset only stale React/DOM references. destroy() also removes manager-level
+      // listeners and resets intended visibility, which is too broad for SPA self-healing.
+      if (this.root) {
+        try {
+          this.root.unmount();
+        } catch (error) {
+          logMessage(
+            `[BaseSidebarManager] Failed to unmount detached sidebar root: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+      if (this.shadowHost?.parentNode) {
+        this.shadowHost.parentNode.removeChild(this.shadowHost);
+      }
+      this.root = null;
+      this.container = null;
+      this.shadowRoot = null;
+      this.shadowHost = null;
+      this._isInitialized = false;
+      this._initializationPromise = null;
     }
 
     // If initialization currently in progress, wait for it to complete
@@ -470,8 +504,8 @@ export abstract class BaseSidebarManager {
     }
 
     // Check again if initialization succeeded (root and host must exist)
-    if (!this.shadowHost || !this.root) {
-      logMessage('Sidebar cannot be shown: Still not initialized or host/root missing after attempt.');
+    if (!this.shadowHost?.isConnected || !this.container?.isConnected || !this.root) {
+      logMessage('Sidebar cannot be shown: host/container/root is missing or detached after initialization.');
       this._isVisible = false; // Ensure state consistency
       return;
     }

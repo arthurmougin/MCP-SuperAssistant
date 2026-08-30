@@ -765,7 +765,7 @@ export const resyncWithOriginalContent = (blockId: string): void => {
   resyncingBlocks.add(blockId);
 
   // Find the original pre element
-  const originalPre = document.querySelector(`div[data-block-id="${blockId}"]`);
+  const originalPre = document.querySelector(`pre[data-block-id="${blockId}"]`);
   if (!originalPre || !originalPre.textContent) {
     if (CONFIG.debug) {
       logger.debug(`Original pre element not found for block ${blockId}`);

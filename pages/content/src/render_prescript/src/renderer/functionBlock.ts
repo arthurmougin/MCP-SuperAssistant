@@ -1230,6 +1230,15 @@ export const renderFunctionCall = (block: HTMLPreElement, isProcessingRef: { cur
   const isPreExistingIncomplete = preExistingIncompleteBlocks.has(blockId);
 
   let existingDiv = renderedFunctionBlocks.get(blockId);
+
+  // ChatGPT may replace an entire message subtree during streaming/navigation.
+  // Never reuse a cached renderer node that is no longer part of the live DOM.
+  if (existingDiv && !existingDiv.isConnected) {
+    if (CONFIG.debug) logger.debug(`Discarding detached cached function block ${blockId}`);
+    renderedFunctionBlocks.delete(blockId);
+    existingDiv = undefined;
+    processedElements.delete(block);
+  }
   let isNewRender = false;
   let previousCompletionStatus: boolean | null = null;
 

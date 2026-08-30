@@ -287,12 +287,16 @@ function collectDemographicData(): { [key: string]: any } {
   }
 }
 
+// Track renderer initialization across immediate, fallback, and retry paths.
+let rendererInitialized = false;
+
 // Initialize the renderer at the earliest possible moment (styles are injected automatically)
 // This ensures function call blocks are hidden before they can be seen by the user
 (function instantInitialize() {
   try {
     // This will set up early observers to hide function blocks before they render
     initializeRenderer();
+    rendererInitialized = true;
     logMessage('Function call renderer initialized immediately at script load');
   } catch (error) {
     logger.error('Error in immediate renderer initialization:', error);
@@ -354,7 +358,10 @@ function collectDemographicData(): { [key: string]: any } {
     logMessage('Attempting fallback initialization...');
     try {
       // Basic renderer initialization as fallback
-      initializeRenderer();
+      if (!rendererInitialized) {
+        initializeRenderer();
+        rendererInitialized = true;
+      }
       logMessage('Fallback renderer initialization completed');
     } catch (fallbackError) {
       logger.error('Fallback initialization also failed:', fallbackError);
@@ -381,7 +388,6 @@ eventBus.on('connection:status-changed', ({ status }: { status: ConnectionStatus
 });
 
 // Improved initialization strategy for the function call renderer
-let rendererInitialized = false;
 
 // More robust initialization with retries if immediate initialization failed
 const initRendererWithRetry = (retries = 3, delay = 300) => {

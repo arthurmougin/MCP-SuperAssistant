@@ -343,7 +343,7 @@ export class McpClient extends EventEmitter<AllEvents> {
         resetTimeoutOnProgress: true,
         // Supplying onprogress asks the MCP peer for progress notifications when supported.
         // Each notification resets the inactivity timeout; there is intentionally no maxTotalTimeout.
-        onprogress: progress => logger.debug(`Tool progress: `, progress),
+        onprogress: progress => logger.debug(`Tool progress: ${toolName}`, progress),
       };
       const result = await this.activePlugin.callTool(this.client, toolName, args, requestOptions);
 

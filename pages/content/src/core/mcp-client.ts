@@ -6,6 +6,8 @@ import type { ServerConfig, ConnectionStatus } from '../types/stores';
 import { logMessage } from '../utils/helpers';
 import { pluginRegistry } from '../plugins';
 
+const MCP_TOOL_CALL_TIMEOUT_MS = 30 * 60 * 1000;
+
 /**
  * McpClient – Enhanced wrapper around ContextBridge for communicating with the
  * background script and managing MCP (Model Context Protocol) connections.
@@ -393,7 +395,7 @@ class McpClient {
         'background',
         'mcp:call-tool',
         { toolName, args, adapterName }, // Pass adapter name to background
-        { timeout: 30_000 }
+        { timeout: MCP_TOOL_CALL_TIMEOUT_MS }
       );
 
       logMessage(`[McpClient] Tool call successful: ${toolName}`);

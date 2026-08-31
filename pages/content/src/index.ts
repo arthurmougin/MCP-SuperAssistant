@@ -40,9 +40,13 @@ import { createLogger } from '@extension/shared/lib/logger';
 
 const logger = createLogger('content_script');
 
-function setupSidebarRecovery(): void {
+function setupSidebarRecovery(): () => void {
+  let stopped = false;
+
   // Watch for the case where push mode is enabled but sidebar isn't visible
   const recoveryInterval = setInterval(() => {
+    if (stopped) return;
+
     try {
       // Check if there's an active sidebar manager
       const sidebarManager = (window as any).activeSidebarManager;
@@ -89,12 +93,17 @@ function setupSidebarRecovery(): void {
     }
   }, 1000); // Check every second
 
-  // Clean up when navigating away
-  window.addEventListener('unload', () => {
+  const stopRecovery = () => {
+    if (stopped) return;
+    stopped = true;
     clearInterval(recoveryInterval);
-  });
+  };
+
+  // Clean up when navigating away
+  window.addEventListener('unload', stopRecovery, { once: true });
 
   logMessage('[SidebarRecovery] Sidebar recovery mechanism set up');
+  return stopRecovery;
 }
 
 /**
@@ -179,7 +188,7 @@ try {
 }
 
 // Add this call right before your existing script loads
-setupSidebarRecovery();
+const stopSidebarRecovery = setupSidebarRecovery();
 
 /**
  * Collects demographic data about the user's environment.
@@ -403,8 +412,15 @@ eventBus.on('context:bridge-invalidated', ({ error }) => {
   rendererDisabledByInvalidContext = true;
   rendererInitialized = false;
   rendererInitializationScheduled = false;
+  stopSidebarRecovery();
   stopDirectMonitoring();
   stopFunctionResultMonitoring();
+
+  const sidebarManager = window.activeSidebarManager;
+  if (sidebarManager) {
+    sidebarManager.destroy();
+  }
+
   logger.warn(`Stopping renderer because extension context was invalidated: ${error}`);
 });
 

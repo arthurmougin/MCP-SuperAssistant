@@ -600,6 +600,13 @@ export class SidebarManager extends BaseSidebarManager {
    * Override the parent destroy method to also remove the window reference and clear singleton
    */
   public destroy(): void {
+    if (this.initializationTimeout) {
+      clearTimeout(this.initializationTimeout);
+      this.initializationTimeout = null;
+    }
+    this.isInitializing = false;
+    this.isFirstLoad = true;
+
     // Remove the window reference
     if (window.activeSidebarManager === this) {
       window.activeSidebarManager = undefined;

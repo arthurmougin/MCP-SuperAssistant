@@ -40,6 +40,10 @@ export interface ContextBridgeConfig {
 
 class ContextBridge {
   private initialized = false;
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly boundChromeMessageHandler = this.handleChromeMessage.bind(this);
+  private readonly boundTabUpdatedHandler = this.handleTabUpdated.bind(this);
+  private eventBusUnsubscribers: Array<() => void> = [];
   private messageListeners = new Map<string, Array<(message: ContextMessage) => void>>();
   private pendingRequests = new Map<string, { resolve: Function; reject: Function; timeout: NodeJS.Timeout }>();
   private config: ContextBridgeConfig;
@@ -72,11 +76,11 @@ class ContextBridge {
       }
 
       // Set up Chrome runtime message listener
-      chrome.runtime.onMessage.addListener(this.handleChromeMessage.bind(this));
+      chrome.runtime.onMessage.addListener(this.boundChromeMessageHandler);
 
       // Listen for tab updates and connection changes (only in background context)
       if (chrome.tabs && chrome.tabs.onUpdated) {
-        chrome.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
+        chrome.tabs.onUpdated.addListener(this.boundTabUpdatedHandler);
       }
 
       // Set up event bus integration
@@ -185,7 +189,10 @@ class ContextBridge {
     performHealthCheck();
 
     // Set up periodic health checks
-    setInterval(performHealthCheck, this.HEALTH_CHECK_INTERVAL);
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+    this.healthCheckInterval = setInterval(performHealthCheck, this.HEALTH_CHECK_INTERVAL);
   }
 
   /**
@@ -300,22 +307,24 @@ class ContextBridge {
    * Set up integration with event bus
    */
   private setupEventBusIntegration(): void {
-    // Listen for events that should be forwarded to other contexts
-    eventBus.on('context:broadcast', ({ event, data, excludeOrigin }) => {
-      this.broadcast(event, data, excludeOrigin as ContextMessage['origin']);
-    });
+    // Avoid duplicate subscriptions across re-initialization.
+    this.eventBusUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe());
 
-    eventBus.on('connection:status-changed', (data) => {
-      this.broadcast('connection:status-changed', data);
-    });
-
-    eventBus.on('adapter:activated', (data) => {
-      this.broadcast('adapter:activated', data);
-    });
-
-    eventBus.on('tool:execution-completed', (data) => {
-      this.broadcast('tool:execution-completed', data);
-    });
+    // Listen for events that should be forwarded to other contexts.
+    this.eventBusUnsubscribers.push(
+      eventBus.on('context:broadcast', ({ event, data, excludeOrigin }) => {
+        this.broadcast(event, data, excludeOrigin as ContextMessage['origin']);
+      }),
+      eventBus.on('connection:status-changed', data => {
+        this.broadcast('connection:status-changed', data);
+      }),
+      eventBus.on('adapter:activated', data => {
+        this.broadcast('adapter:activated', data);
+      }),
+      eventBus.on('tool:execution-completed', data => {
+        this.broadcast('tool:execution-completed', data);
+      }),
+    );
   }
 
   /**
@@ -610,6 +619,27 @@ class ContextBridge {
    * Cleanup context bridge
    */
   cleanup(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+        chrome.runtime.onMessage.removeListener(this.boundChromeMessageHandler);
+      }
+    } catch (error) {
+      logger.debug('[ContextBridge] Runtime listener already unavailable during cleanup', error);
+    }
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs?.onUpdated) {
+        chrome.tabs.onUpdated.removeListener(this.boundTabUpdatedHandler);
+      }
+    } catch (error) {
+      logger.debug('[ContextBridge] Tab listener already unavailable during cleanup', error);
+    }
+
     // Clear pending requests
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
@@ -617,10 +647,13 @@ class ContextBridge {
     }
     this.pendingRequests.clear();
 
+    this.eventBusUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe());
+
     // Clear listeners
     this.messageListeners.clear();
 
     this.initialized = false;
+    this.isExtensionContextValid = false;
     logger.debug('[ContextBridge] Cleaned up');
   }
 }

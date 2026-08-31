@@ -421,6 +421,14 @@ eventBus.on('context:bridge-invalidated', ({ error }) => {
     sidebarManager.destroy();
   }
 
+  // A stale content script must fully relinquish React roots, adapter observers, services,
+  // runtime listeners and timers. This does not change persisted UI preferences.
+  void cleanupAllServices()
+    .then(() => applicationCleanup())
+    .catch(cleanupError => {
+      logger.error('[Content Script] Failed comprehensive cleanup after context invalidation:', cleanupError);
+    });
+
   logger.warn(`Stopping renderer because extension context was invalidated: ${error}`);
 });
 
